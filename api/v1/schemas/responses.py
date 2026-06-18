@@ -49,11 +49,62 @@ class AnalysisResponse(BaseModel):
     processing_ms: float
 
 
+class SessionStatus(str, Enum):
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    FLAGGED = "flagged"
+
+
 class SessionResponse(BaseModel):
     session_id: str
     student_id: str
     created_at: int
     frame_count: int
+    status: SessionStatus = SessionStatus.ACTIVE
+
+
+class StateBreakdown(BaseModel):
+    focused: int = 0
+    distracted: int = 0
+    sleeping: int = 0
+    absent: int = 0
+
+
+class FlagSummary(BaseModel):
+    phone_detected: int = 0
+    left_desk: int = 0
+    eyes_closed: int = 0
+    looking_away: int = 0
+
+
+class SessionReport(BaseModel):
+    """Aggregated session summary — the JSON the Teacher/Admin dashboards render."""
+
+    session_id: str
+    student_id: str
+    status: SessionStatus
+    created_at: int
+    ended_at: Optional[int] = None
+    duration_seconds: float = 0.0
+
+    frames_analyzed: int = 0
+    frames_with_face: int = 0
+
+    avg_attention: float = Field(0.0, ge=0, le=100)
+    min_attention: float = Field(0.0, ge=0, le=100)
+    avg_focus: float = Field(0.0, ge=0, le=100)
+
+    blink_count: int = 0
+    blink_rate_per_min: float = 0.0
+
+    head_motion_yaw_std: float = Field(0.0, description="Yaw variability (deg) — head motion")
+    head_motion_pitch_std: float = Field(0.0, description="Pitch variability (deg) — head motion")
+
+    dominant_state: AttentionState = AttentionState.ABSENT
+    state_breakdown: StateBreakdown = StateBreakdown()
+    flag_counts: FlagSummary = FlagSummary()
+
+    verdict: str = Field("attentive", description="attentive | needs_attention | flagged")
 
 
 class HealthResponse(BaseModel):

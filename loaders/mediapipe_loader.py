@@ -6,6 +6,10 @@ class MediaPipeLoader:
     _pose = None
 
     @classmethod
+    def is_loaded(cls) -> bool:
+        return cls._face is not None and cls._pose is not None
+
+    @classmethod
     def face_instance(cls):
         if cls._face is None:
             import mediapipe as mp

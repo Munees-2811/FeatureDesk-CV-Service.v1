@@ -53,7 +53,7 @@ class AnalysisService:
             attention = self._attention.score(head, eye)
             focus = self._focus.score(head, eye, pose_result)
             state = self._state.transition(track.id, attention, eye)
-            flags = self._flags.detect(eye, objects, pose_result)
+            flags = self._flags.detect(eye, objects, pose_result, head)
 
             students.append(self._build_student(track, attention, focus, state, head, eye, flags))
 

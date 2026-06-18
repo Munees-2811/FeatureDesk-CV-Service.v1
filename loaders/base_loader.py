@@ -8,9 +8,13 @@ class BaseLoader(ABC):
 
     @classmethod
     def instance(cls):
-        if cls._instance is None:
+        if cls.__dict__.get("_instance") is None:
             cls._instance = cls._load_model()
         return cls._instance
+
+    @classmethod
+    def is_loaded(cls) -> bool:
+        return cls.__dict__.get("_instance") is not None
 
     @classmethod
     @abstractmethod

@@ -20,6 +20,6 @@ async def ws_stream(
         while True:
             data = await websocket.receive_bytes()
             result = await processor.process(session_id, data)
-            await manager.send(session_id, result)
+            await manager.send(session_id, result.model_dump(mode="json"))
     except WebSocketDisconnect:
         manager.disconnect(session_id)
