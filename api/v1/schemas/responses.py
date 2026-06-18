@@ -49,6 +49,51 @@ class AnalysisResponse(BaseModel):
     processing_ms: float
 
 
+# Human-readable status labels for the client dashboard (title case).
+_STATUS_LABELS = {
+    AttentionState.FOCUSED: "Focused",
+    AttentionState.DISTRACTED: "Distracted",
+    AttentionState.SLEEPING: "Sleeping",
+    AttentionState.ABSENT: "Absent",
+}
+
+
+class LiveAnalysisResponse(BaseModel):
+    """Flat, dashboard-ready contract the client wires directly into their UI:
+
+        {"student_id": "S001", "status": "Focused", "attention": 94,
+         "phone": false, "faces": 1}
+    """
+
+    student_id: str
+    status: str
+    attention: int = Field(..., ge=0, le=100)
+    phone: bool
+    faces: int
+
+    @classmethod
+    def from_analysis(
+        cls, resp: "AnalysisResponse", student_id: Optional[str] = None
+    ) -> "LiveAnalysisResponse":
+        faces = len(resp.students)
+        if not resp.students:
+            return cls(
+                student_id=student_id or "unknown",
+                status="Absent",
+                attention=0,
+                phone=False,
+                faces=0,
+            )
+        primary = resp.students[0]
+        return cls(
+            student_id=student_id or primary.student_id,
+            status=_STATUS_LABELS.get(primary.state, "Absent"),
+            attention=round(primary.attention_score),
+            phone=any(s.flags.phone_detected for s in resp.students),
+            faces=faces,
+        )
+
+
 class SessionStatus(str, Enum):
     ACTIVE = "active"
     COMPLETED = "completed"

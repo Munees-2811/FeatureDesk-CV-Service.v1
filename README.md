@@ -43,10 +43,20 @@ sticky sessions).
 | GET | `/sessions/{id}` | Live session status |
 | POST | `/sessions/{id}/close` | Finalise (marks `completed`/`flagged`) |
 | GET | `/sessions/{id}/report` | Aggregated dashboard report |
-| POST | `/analysis/frame` | Stateless single-frame analysis (polling) |
-| WS | `/ws/stream/{session_id}` | Live frame stream (binary in → JSON out) |
+| **POST** | **`/analysis/live`** | **Flat dashboard JSON (primary client contract)** |
+| WS | `/ws/live/{session_id}` | Live stream of the flat JSON (binary in → JSON out) |
+| POST | `/analysis/frame` | Detailed multi-student analysis |
+| WS | `/ws/stream/{session_id}` | Detailed multi-student stream |
 
-### Per-frame response (`POST /analysis/frame`)
+### Live response (`POST /analysis/live`) — the contract the client wires to their dashboard
+```json
+{ "student_id": "S001", "status": "Focused", "attention": 94, "phone": false, "faces": 1 }
+```
+`status` is one of `Focused | Distracted | Sleeping | Absent`. Send `student_id`
+(e.g. `"S001"`), `session_id` and `frame_b64` in the request body. For continuous
+live detection, open `WS /ws/live/{session_id}?student_id=S001` and push frame bytes.
+
+### Detailed per-frame response (`POST /analysis/frame`)
 ```jsonc
 {
   "session_id": "…", "timestamp_ms": 0, "frame_id": 0, "processing_ms": 38.0,
@@ -87,12 +97,13 @@ Point the frontend at the service with one env var, then POST frames:
 
 ```ts
 // VITE_CV_SERVICE_URL + VITE_CV_API_KEY in the frontend .env
-const res = await fetch(`${import.meta.env.VITE_CV_SERVICE_URL}/api/v1/analysis/frame`, {
+const res = await fetch(`${import.meta.env.VITE_CV_SERVICE_URL}/api/v1/analysis/live`, {
   method: "POST",
   headers: { "Content-Type": "application/json", "X-API-Key": import.meta.env.VITE_CV_API_KEY },
-  body: JSON.stringify({ session_id, frame_b64 }) // frame_b64 = canvas.toDataURL().split(",")[1]
+  body: JSON.stringify({ session_id, student_id, frame_b64 }) // frame_b64 = canvas.toDataURL().split(",")[1]
 });
-const analysis = await res.json(); // render attention_score / flags on the dashboard
+const r = await res.json();
+// { student_id: "S001", status: "Focused", attention: 94, phone: false, faces: 1 }
 ```
 
 ## Configuration
