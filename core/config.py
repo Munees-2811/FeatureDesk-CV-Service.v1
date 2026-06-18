@@ -37,10 +37,11 @@ class Settings(BaseSettings):
     LOOKING_AWAY_YAW_DEG: float = 25.0
     LOOKING_AWAY_PITCH_DEG: float = 20.0
 
-    # Time-based attention escalation (seconds of continuous eye closure)
-    DROWSY_SECONDS: float = 3.0       # > this  -> "attention less"
-    INATTENTIVE_SECONDS: float = 5.0  # > this  -> "no attention"
-    SLEEP_SECONDS: float = 20.0       # > this  -> "Sleeping"
+    # Time-based attention escalation (seconds of continuous eye closure).
+    # <= DROWSY is treated as a normal blink/rest (stays Focused).
+    DROWSY_SECONDS: float = 6.0        # > this  -> Distracted ("attention less")
+    INATTENTIVE_SECONDS: float = 12.0  # > this  -> Distracted ("no attention")
+    SLEEP_SECONDS: float = 20.0        # > this  -> "Sleeping"
 
     # Statistical attention engine
     MAX_FACES: int = 5
