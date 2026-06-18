@@ -89,7 +89,7 @@ class CameraWorker(threading.Thread):
                 )
                 live = LiveAnalysisResponse.from_analysis(response, STUDENT_ID)
                 annotated = self._annotate(frame, detections, tracks, response, live)
-                self._queue.put(("frame", (annotated, live, response.processing_ms)))
+                self._queue.put(("frame", (annotated, live, response)))
             except Exception as exc:  # keep the UI alive on any per-frame error
                 self._queue.put(("error", f"{type(exc).__name__}: {exc}"))
 
@@ -127,47 +127,110 @@ class CameraWorker(threading.Thread):
         return frame
 
 
+# UI palette
+BG = "#0f1117"
+CARD = "#1a1f2e"
+MUTED = "#9ca3af"
+PREVIEW_W, PREVIEW_H = 380, 285  # small left preview (4:3)
+
+STATE_COLORS = {
+    "Focused": "#22c55e",
+    "Distracted": "#f59e0b",
+    "Sleeping": "#ef4444",
+    "Absent": "#6b7280",
+}
+
+
 class TesterApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title("FeatureDesk CV — Local Tester")
-        self.root.configure(bg="#0f1117")
+        self.root.configure(bg=BG)
+        self.root.geometry("960x540")
         self.queue: "queue.Queue" = queue.Queue(maxsize=2)
         self.worker: CameraWorker | None = None
+        self._imgtk = None  # keep ref so Tk doesn't GC the image
 
-        # Controls
-        bar = tk.Frame(root, bg="#0f1117")
-        bar.pack(fill="x", padx=10, pady=8)
-        tk.Label(bar, text="Camera index:", fg="#cbd5e1", bg="#0f1117").pack(side="left")
+        # Top control bar
+        bar = tk.Frame(root, bg=BG)
+        bar.pack(fill="x", padx=14, pady=10)
+        tk.Label(bar, text="Camera index:", fg="#cbd5e1", bg=BG,
+                 font=("Segoe UI", 10)).pack(side="left")
         self.cam_var = tk.StringVar(value="0")
         ttk.Entry(bar, textvariable=self.cam_var, width=4).pack(side="left", padx=(4, 12))
-        self.start_btn = ttk.Button(bar, text="Start camera", command=self.start)
+        self.start_btn = ttk.Button(bar, text="▶ Start camera", command=self.start)
         self.start_btn.pack(side="left")
-        self.stop_btn = ttk.Button(bar, text="Stop", command=self.stop, state="disabled")
+        self.stop_btn = ttk.Button(bar, text="■ Stop", command=self.stop, state="disabled")
         self.stop_btn.pack(side="left", padx=6)
+        self.live_dot = tk.Label(bar, text="● idle", fg=MUTED, bg=BG, font=("Segoe UI", 10, "bold"))
+        self.live_dot.pack(side="right")
 
-        # Video + side panel
-        body = tk.Frame(root, bg="#0f1117")
-        body.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        self.video = tk.Label(body, bg="black", width=640, height=480)
-        self.video.pack(side="left")
+        body = tk.Frame(root, bg=BG)
+        body.pack(fill="both", expand=True, padx=14, pady=(0, 14))
 
-        side = tk.Frame(body, bg="#0f1117")
-        side.pack(side="left", fill="both", expand=True, padx=(12, 0))
-        tk.Label(side, text="Live JSON (sent to dashboard)", fg="#93c5fd",
-                 bg="#0f1117", font=("Segoe UI", 11, "bold")).pack(anchor="w")
-        self.json_box = tk.Text(side, height=9, width=40, bg="#111827", fg="#e5e7eb",
-                                insertbackground="#e5e7eb", font=("Consolas", 12), bd=0)
-        self.json_box.pack(anchor="w", pady=6, fill="x")
-        self.status = tk.Label(side, text="Idle. Loads models on first frame "
-                               "(first frame can take a few seconds).",
-                               fg="#9ca3af", bg="#0f1117", wraplength=320, justify="left")
-        self.status.pack(anchor="w", pady=6)
-        self.fps = tk.Label(side, text="", fg="#9ca3af", bg="#0f1117")
-        self.fps.pack(anchor="w")
+        # ---- LEFT: small live preview with bounding boxes ----
+        left = tk.Frame(body, bg=BG)
+        left.pack(side="left", anchor="n")
+        tk.Label(left, text="LIVE  (bounding-box analysis)", fg="#93c5fd", bg=BG,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 6))
+        self.video = tk.Label(left, bg="black", width=PREVIEW_W, height=PREVIEW_H)
+        self.video.pack()
+        self.fps = tk.Label(left, text="", fg=MUTED, bg=BG, font=("Consolas", 9))
+        self.fps.pack(anchor="w", pady=(6, 0))
+
+        # ---- RIGHT: dashboard ----
+        right = tk.Frame(body, bg=BG)
+        right.pack(side="left", fill="both", expand=True, padx=(16, 0))
+        tk.Label(right, text="STUDENT BEHAVIOUR DASHBOARD", fg="#e5e7eb", bg=BG,
+                 font=("Segoe UI", 13, "bold")).pack(anchor="w")
+
+        # Big status banner
+        self.status_card = tk.Frame(right, bg=CARD)
+        self.status_card.pack(fill="x", pady=(10, 8))
+        self.status_lbl = tk.Label(self.status_card, text="—", fg="#e5e7eb", bg=CARD,
+                                    font=("Segoe UI", 22, "bold"), pady=14)
+        self.status_lbl.pack()
+
+        # Metric cards row
+        row = tk.Frame(right, bg=BG)
+        row.pack(fill="x")
+        self.attention_val = self._metric(row, "ATTENTION", "0", 0)
+        self.faces_val = self._metric(row, "FACES", "0", 1)
+        self.phone_val = self._metric(row, "PHONE", "—", 2)
+
+        # Attention bar
+        tk.Label(right, text="Attention level", fg=MUTED, bg=BG,
+                 font=("Segoe UI", 9)).pack(anchor="w", pady=(10, 2))
+        self.att_canvas = tk.Canvas(right, height=16, bg="#111827", highlightthickness=0)
+        self.att_canvas.pack(fill="x")
+
+        # Secondary metrics (richer telemetry)
+        self.extra = tk.Label(right, text="head —   eyes —", fg=MUTED, bg=BG,
+                              font=("Consolas", 10), justify="left")
+        self.extra.pack(anchor="w", pady=(10, 4))
+
+        # Raw JSON (the exact contract sent to the client dashboard)
+        tk.Label(right, text="JSON sent to client dashboard", fg="#93c5fd", bg=BG,
+                 font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(6, 2))
+        self.json_box = tk.Text(right, height=7, bg="#111827", fg="#e5e7eb",
+                                insertbackground="#e5e7eb", font=("Consolas", 11), bd=0)
+        self.json_box.pack(fill="both", expand=True)
+
+        self.status_hint = tk.Label(right, text="Idle — click Start. First frame loads "
+                                    "models (a few seconds).", fg=MUTED, bg=BG,
+                                    font=("Segoe UI", 9))
+        self.status_hint.pack(anchor="w", pady=(6, 0))
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
-        self._imgtk = None  # keep a ref so Tk doesn't garbage-collect the image
+
+    def _metric(self, parent, title, value, col) -> tk.Label:
+        card = tk.Frame(parent, bg=CARD)
+        card.grid(row=0, column=col, sticky="ew", padx=(0 if col == 0 else 8, 0))
+        parent.grid_columnconfigure(col, weight=1)
+        tk.Label(card, text=title, fg=MUTED, bg=CARD, font=("Segoe UI", 9)).pack(pady=(10, 0))
+        val = tk.Label(card, text=value, fg="#e5e7eb", bg=CARD, font=("Segoe UI", 20, "bold"))
+        val.pack(pady=(0, 10))
+        return val
 
     def start(self) -> None:
         if self.worker:
@@ -176,7 +239,8 @@ class TesterApp:
             cam = int(self.cam_var.get())
         except ValueError:
             cam = 0
-        self.status.config(text="Starting camera and loading models…")
+        self.status_hint.config(text="Starting camera and loading models…")
+        self.live_dot.config(text="● connecting", fg="#f59e0b")
         self.worker = CameraWorker(cam, self.queue)
         self.worker.start()
         self.start_btn.config(state="disabled")
@@ -189,29 +253,63 @@ class TesterApp:
             self.worker = None
         self.start_btn.config(state="normal")
         self.stop_btn.config(state="disabled")
-        self.status.config(text="Stopped.")
+        self.live_dot.config(text="● idle", fg=MUTED)
+        self.status_hint.config(text="Stopped.")
 
     def _poll(self) -> None:
         try:
             while True:
                 kind, payload = self.queue.get_nowait()
                 if kind == "error":
-                    self.status.config(text=f"⚠ {payload}")
+                    self.status_hint.config(text=f"⚠ {payload}")
+                    self.live_dot.config(text="● error", fg="#ef4444")
                     continue
-                frame, live, proc_ms = payload
-                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                self._imgtk = ImageTk.PhotoImage(Image.fromarray(rgb))
-                self.video.config(image=self._imgtk)
-
-                self.json_box.delete("1.0", "end")
-                self.json_box.insert("1.0", live.model_dump_json(indent=2))
-                face = "✓ face detected" if live.faces > 0 else "✗ no face"
-                self.status.config(text=face)
-                self.fps.config(text=f"pipeline {proc_ms:.0f} ms/frame")
+                self._render(*payload)
         except queue.Empty:
             pass
         if self.worker:
             self.root.after(15, self._poll)
+
+    def _render(self, frame, live, response) -> None:
+        # Left preview (scaled small)
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        img = Image.fromarray(rgb).resize((PREVIEW_W, PREVIEW_H))
+        self._imgtk = ImageTk.PhotoImage(img)
+        self.video.config(image=self._imgtk)
+
+        # Dashboard
+        colour = STATE_COLORS.get(live.status, "#e5e7eb")
+        self.status_card.config(bg=colour)
+        self.status_lbl.config(text=live.status, bg=colour, fg="#0f1117")
+        self.attention_val.config(text=str(live.attention))
+        self.faces_val.config(text=str(live.faces))
+        self.phone_val.config(text="⚠ YES" if live.phone else "✓ no",
+                              fg="#ef4444" if live.phone else "#22c55e")
+
+        # Attention bar
+        self.att_canvas.delete("all")
+        w = self.att_canvas.winfo_width() or 300
+        self.att_canvas.create_rectangle(0, 0, w * live.attention / 100, 16,
+                                         fill=colour, width=0)
+
+        # Secondary telemetry from the detailed response
+        head = eyes = "—"
+        if response.students:
+            s = response.students[0]
+            if s.head_pose:
+                head = f"yaw {s.head_pose.yaw:+.0f}  pitch {s.head_pose.pitch:+.0f}"
+            if s.eye_metrics:
+                avg = (s.eye_metrics.ear_left + s.eye_metrics.ear_right) / 2
+                eyes = f"EAR {avg:.2f}"
+        self.extra.config(text=f"head: {head}    eyes: {eyes}")
+
+        self.json_box.delete("1.0", "end")
+        self.json_box.insert("1.0", live.model_dump_json(indent=2))
+
+        face = "✓ face detected" if live.faces > 0 else "✗ no face in frame"
+        self.status_hint.config(text=face)
+        self.fps.config(text=f"pipeline {response.processing_ms:.0f} ms/frame")
+        self.live_dot.config(text="● LIVE", fg="#22c55e")
 
     def on_close(self) -> None:
         self.stop()
