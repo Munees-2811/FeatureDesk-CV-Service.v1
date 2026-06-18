@@ -108,9 +108,12 @@ class AttentionEngine:
                                 round(head_motion, 1), round(perclos, 2))
 
         # --- composite raw attention (eyes open, or sustained closure) ---
-        eyes_open_factor = 1.0 - perclos
+        # NOTE: blink frequency (PERCLOS) deliberately does NOT reduce attention.
+        # Blinking is normal; only *sustained* closure (>= DROWSY_SECONDS, handled
+        # by the escalation below) counts as inattention. Attention is driven by
+        # where the head/eyes point (spatial) and head stability (motion).
         motion_factor = max(0.0, 1.0 - head_motion / settings.HEAD_MOTION_REF_DEG)
-        raw = spatial_score * eyes_open_factor * (0.5 + 0.5 * motion_factor)
+        raw = spatial_score * (0.5 + 0.5 * motion_factor)
 
         # --- EMA smoothing ---
         alpha = settings.ATTENTION_EMA_ALPHA
