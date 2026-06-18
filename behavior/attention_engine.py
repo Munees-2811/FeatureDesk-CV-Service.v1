@@ -93,7 +93,21 @@ class AttentionEngine:
             self._closed_since[track_id] = None
             closed_for = 0.0
 
-        # --- composite raw attention ---
+        # A normal blink / short rest (closed but under the drowsy threshold) must
+        # not move the score at all: eyes-closed makes gaze unreliable, so we hold
+        # attention steady and keep the student Focused.
+        if closed and closed_for < settings.DROWSY_SECONDS:
+            attention = self._ema.get(track_id)
+            if attention is None:
+                attention = spatial_score
+                self._ema[track_id] = attention
+            state = (AttentionState.FOCUSED
+                     if attention >= settings.FOCUS_ATTENTION_THRESHOLD
+                     else AttentionState.DISTRACTED)
+            return EngineResult(round(attention, 1), state,
+                                round(head_motion, 1), round(perclos, 2))
+
+        # --- composite raw attention (eyes open, or sustained closure) ---
         eyes_open_factor = 1.0 - perclos
         motion_factor = max(0.0, 1.0 - head_motion / settings.HEAD_MOTION_REF_DEG)
         raw = spatial_score * eyes_open_factor * (0.5 + 0.5 * motion_factor)
