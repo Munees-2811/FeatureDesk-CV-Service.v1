@@ -36,8 +36,17 @@ class AnalysisService:
         self._frame_counter: dict[str, int] = {}
 
     async def process_frame(self, req: FrameAnalysisRequest) -> AnalysisResponse:
-        t0 = time.monotonic()
         frame = decode_base64_frame(req.frame_b64)
+        response, _, _ = self.run_pipeline(
+            frame, req.session_id, req.timestamp_ms or int(time.time() * 1000)
+        )
+        return response
+
+    def run_pipeline(self, frame, session_id: str, timestamp_ms: int):
+        """Core synchronous pipeline. Returns (response, detections, tracks) so
+        callers that need the raw boxes (e.g. the local Tkinter tester) can draw
+        them without re-running inference."""
+        t0 = time.monotonic()
 
         detections = self._detector.detect(frame)
         tracks = self._tracker.update(detections, frame)
@@ -57,16 +66,17 @@ class AnalysisService:
 
             students.append(self._build_student(track, attention, focus, state, head, eye, flags))
 
-        frame_id = self._frame_counter.setdefault(req.session_id, 0)
-        self._frame_counter[req.session_id] = frame_id + 1
+        frame_id = self._frame_counter.setdefault(session_id, 0)
+        self._frame_counter[session_id] = frame_id + 1
 
-        return AnalysisResponse(
-            session_id=req.session_id,
-            timestamp_ms=req.timestamp_ms or int(time.time() * 1000),
+        response = AnalysisResponse(
+            session_id=session_id,
+            timestamp_ms=timestamp_ms,
             frame_id=frame_id,
             students=students,
             processing_ms=round((time.monotonic() - t0) * 1000, 2),
         )
+        return response, detections, tracks
 
     @staticmethod
     def _build_student(track, attention, focus, state, head, eye, flags):

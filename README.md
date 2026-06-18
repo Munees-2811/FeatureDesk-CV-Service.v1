@@ -75,7 +75,25 @@ live detection, open `WS /ws/live/{session_id}?student_id=S001` and push frame b
 `head_motion_yaw_std`, `dominant_state`, `state_breakdown`, `flag_counts`,
 and a `verdict` of `attentive | needs_attention | flagged`.
 
-## Run locally (no cloud, $0)
+## Try it on your own webcam first (local Tkinter tester)
+
+Before the client wires this to their dashboard, verify it detects **your** face
+and produces the right JSON — no server needed:
+
+```bash
+pip install -r requirements.txt          # core CV deps
+pip install -r tools/requirements.txt    # pillow (tester UI only)
+python download_models.py                # one-time model download
+python tools/desktop_tester.py
+```
+
+A desktop window opens your webcam, draws the detected **face/person** (and any
+**phone**) box, and shows the live JSON it would send to the dashboard
+(`status`, `attention`, `phone`, `faces`). It runs the *exact same* pipeline as
+the API, so what you see here is what the client receives. The first frame takes
+a few seconds while models load.
+
+## Run locally ($0, no cloud)
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
