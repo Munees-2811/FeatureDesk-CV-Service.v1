@@ -13,7 +13,10 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = True
     API_KEY: str = Field(default="dev-secret-key", description="Secret API key for auth")
-    CORS_ORIGINS: List[str] = ["http://localhost:5173"]
+    CORS_ORIGINS: List[str] = [
+        "https://featuredeskx.netlify.app",
+        "http://localhost:5173",
+    ]
     LOG_LEVEL: str = "INFO"
 
     # Frame constraints
@@ -25,6 +28,19 @@ class Settings(BaseSettings):
     BEST_MODEL_PATH: str = "models/best.pt"
     FACE_LANDMARKER_PATH: str = "models/face_landmarker.task"
     POSE_LANDMARKER_PATH: str = "models/pose_landmarker_lite.task"
+
+    # Load every CV model at startup (True) or lazily on first frame (False).
+    PRELOAD_MODELS: bool = False
+
+    # Behaviour tuning
+    BLINK_EAR_THRESHOLD: float = 0.21
+    LOOKING_AWAY_YAW_DEG: float = 25.0
+    LOOKING_AWAY_PITCH_DEG: float = 20.0
+
+    # Session lifecycle / limits
+    SESSION_TTL_SECONDS: int = 3600
+    RATE_LIMIT_MAX_CALLS: int = 300
+    RATE_LIMIT_WINDOW_SECONDS: int = 60
 
 
 settings = Settings()

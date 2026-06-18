@@ -18,6 +18,9 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting FeatureDesk CV Service", version=settings.APP_VERSION)
+    if settings.PRELOAD_MODELS:
+        from loaders import preload_all
+        preload_all()
     yield
     logger.info("Shutting down FeatureDesk CV Service")
 
