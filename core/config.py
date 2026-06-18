@@ -39,7 +39,7 @@ class Settings(BaseSettings):
 
     # Time-based attention escalation (seconds of continuous eye closure).
     # <= DROWSY is treated as a normal blink/rest (stays Focused).
-    DROWSY_SECONDS: float = 6.0        # > this  -> Distracted ("attention less")
+    DROWSY_SECONDS: float = 7.0        # > this  -> Distracted ("attention less")
     INATTENTIVE_SECONDS: float = 12.0  # > this  -> Distracted ("no attention")
     SLEEP_SECONDS: float = 20.0        # > this  -> "Sleeping"
 
