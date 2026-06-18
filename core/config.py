@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     LOOKING_AWAY_YAW_DEG: float = 25.0
     LOOKING_AWAY_PITCH_DEG: float = 20.0
 
+    # Time-based attention escalation (seconds of continuous eye closure)
+    DROWSY_SECONDS: float = 3.0       # > this  -> "attention less"
+    INATTENTIVE_SECONDS: float = 5.0  # > this  -> "no attention"
+    SLEEP_SECONDS: float = 20.0       # > this  -> "Sleeping"
+
     # Session lifecycle / limits
     SESSION_TTL_SECONDS: int = 3600
     RATE_LIMIT_MAX_CALLS: int = 300

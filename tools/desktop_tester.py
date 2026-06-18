@@ -178,6 +178,7 @@ class TesterApp:
         self.queue: "queue.Queue" = queue.Queue(maxsize=1)
         self.worker: CameraWorker | None = None
         self._imgtk = None
+        self._eye_closed_since: float | None = None
 
         bar = tk.Frame(root, bg=BG)
         bar.pack(fill="x", padx=14, pady=10)
@@ -326,6 +327,7 @@ class TesterApp:
         self.att_canvas.create_rectangle(0, 0, w * live.attention / 100, 16, fill=colour, width=0)
 
         head = eyes = "—"
+        closed_txt = ""
         if response.students:
             s = response.students[0]
             if s.head_pose:
@@ -333,7 +335,14 @@ class TesterApp:
             if s.eye_metrics:
                 avg = (s.eye_metrics.ear_left + s.eye_metrics.ear_right) / 2
                 eyes = f"EAR {avg:.2f}"
-        self.extra.config(text=f"head: {head}    eyes: {eyes}")
+                if avg < 0.21:
+                    self._eye_closed_since = self._eye_closed_since or time.monotonic()
+                    closed_txt = f"   eyes-closed {time.monotonic() - self._eye_closed_since:.1f}s"
+                else:
+                    self._eye_closed_since = None
+        else:
+            self._eye_closed_since = None
+        self.extra.config(text=f"head: {head}    eyes: {eyes}{closed_txt}")
 
         self.json_box.delete("1.0", "end")
         self.json_box.insert("1.0", live.model_dump_json(indent=2))
