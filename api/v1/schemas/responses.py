@@ -38,6 +38,8 @@ class StudentAnalysis(BaseModel):
     state: AttentionState
     head_pose: Optional[HeadPose] = None
     eye_metrics: Optional[EyeMetrics] = None
+    head_motion: Optional[float] = Field(None, description="Yaw+pitch std (deg) over window")
+    perclos: Optional[float] = Field(None, description="Fraction of window with eyes closed")
     flags: BehaviorFlags = BehaviorFlags()
 
 

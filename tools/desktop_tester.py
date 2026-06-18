@@ -50,6 +50,12 @@ TARGET_FPS = 10
 GREEN = (0, 200, 0)
 RED = (0, 0, 230)
 YELLOW = (0, 200, 230)
+STATE_COLORS_BGR = {
+    "focused": (0, 200, 0),
+    "distracted": (0, 165, 255),
+    "sleeping": (0, 0, 230),
+    "absent": (150, 150, 150),
+}
 
 # UI palette.
 BG = "#0f1117"
@@ -127,11 +133,11 @@ class CameraWorker(threading.Thread):
 
                 frame = cv2.flip(frame, 1)  # mirror, selfie-style
                 try:
-                    response, detections, tracks = self._service.run_pipeline(
+                    response, detections, faces = self._service.run_pipeline(
                         frame, SESSION_ID, int(time.time() * 1000)
                     )
                     live = LiveAnalysisResponse.from_analysis(response, STUDENT_ID)
-                    annotated = self._annotate(frame, detections, tracks, response, live)
+                    annotated = self._annotate(frame, detections, faces, response, live)
                     frames += 1
                     self._emit("frame", (annotated, live, response, frames))
                 except Exception:
@@ -147,12 +153,12 @@ class CameraWorker(threading.Thread):
             self._emit("error", traceback.format_exc())
 
     @staticmethod
-    def _annotate(frame, detections, tracks, response, live):
-        for i, track in enumerate(tracks):
-            x1, y1, x2, y2 = track.bbox
+    def _annotate(frame, detections, faces, response, live):
+        for i, face in enumerate(faces):
+            x1, y1, x2, y2 = face.bbox
             student = response.students[i] if i < len(response.students) else None
-            label = live.status if student else "?"
-            colour = GREEN if (student and student.eye_metrics) else YELLOW
+            label = student.state.value if student else "?"
+            colour = STATE_COLORS_BGR.get(label, GREEN)
             cv2.rectangle(frame, (x1, y1), (x2, y2), colour, 2)
             cv2.putText(frame, f"FACE / {label}", (x1, max(0, y1 - 10)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, colour, 2)
@@ -326,12 +332,14 @@ class TesterApp:
         w = self.att_canvas.winfo_width() or 300
         self.att_canvas.create_rectangle(0, 0, w * live.attention / 100, 16, fill=colour, width=0)
 
-        head = eyes = "—"
+        head = eyes = motion = "—"
         closed_txt = ""
         if response.students:
             s = response.students[0]
             if s.head_pose:
-                head = f"yaw {s.head_pose.yaw:+.0f}  pitch {s.head_pose.pitch:+.0f}"
+                head = f"yaw {s.head_pose.yaw:+.0f} pitch {s.head_pose.pitch:+.0f}"
+            if s.head_motion is not None:
+                motion = f"{s.head_motion:.1f}° (PERCLOS {s.perclos:.0%})"
             if s.eye_metrics:
                 avg = (s.eye_metrics.ear_left + s.eye_metrics.ear_right) / 2
                 eyes = f"EAR {avg:.2f}"
@@ -342,7 +350,8 @@ class TesterApp:
                     self._eye_closed_since = None
         else:
             self._eye_closed_since = None
-        self.extra.config(text=f"head: {head}    eyes: {eyes}{closed_txt}")
+        self.extra.config(text=f"head: {head}    eyes: {eyes}{closed_txt}\n"
+                               f"face-motion: {motion}")
 
         self.json_box.delete("1.0", "end")
         self.json_box.insert("1.0", live.model_dump_json(indent=2))

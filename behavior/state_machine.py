@@ -41,7 +41,9 @@ class StateMachine:
         eyes_closed = avg_ear < settings.BLINK_EAR_THRESHOLD
 
         if eyes_closed:
-            started = self._closed_since.get(track_id) or ts
+            started = self._closed_since.get(track_id)
+            if started is None:
+                started = ts
             self._closed_since[track_id] = started
             closed_for = (ts - started) / 1000.0
         else:
